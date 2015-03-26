@@ -1,3 +1,5 @@
+import ipdb
+
 import sys
 import petsc4py
 petsc4py.init(sys.argv)
@@ -7,7 +9,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 
-nSupport = 5            # Number of support points
+nSupport = 10            # Number of support points
 supportSpace = (0, 1)   # Range in which the support points are equally distributed
 nEval = 9               # Number of evaluation points
 evalSpace = (-0.2, 1.2) # Range of evaluation points
@@ -31,7 +33,16 @@ def basisfunction(radius):
         print("No Basisfunction selected.")
         sys.exit(-1)
 
+def partitions():
+    """ Partitions the support points evenly through all domains. """
+    MPIsize = (MPI.COMM_WORLD.Get_size())
+    lst = range(nSupport)
+    division = len(lst) / float(MPIsize)
+    return [ lst[int(round(division * i)): int(round(division * (i + 1)))] for i in range(MPIsize) ]
+    
+    
 def plot(supports, evals, interp, coeffs):
+    """ Support Points, Evaluation Point, Interpolation Results, Coefficients"""
     sRange = np.linspace(min(supportSpace[0], evalSpace[0]), max(supportSpace[1], evalSpace[1]), 1000)  # Super range
     f, axes = plt.subplots(3, sharex=True)
     axes[0].plot(sRange, testfunction(sRange), "b") # Plot the original function
@@ -64,11 +75,16 @@ def main():
     MPIsize = MPI.COMM_WORLD.Get_size()
     print("MPI Rank = ", MPIrank)
     print("MPI Size = ", MPIsize)
-
-    # plot()
-
+    parts = partitions()
+    
+    print("Dimension= ", nSupport + dimension, "bsize = ", len(parts[MPIrank]))
+    MPI.COMM_WORLD.Barrier() # Just to keep the output together
+    
+    # A = PETSc.Mat(); A.createDense( (nSupport + dimension, nSupport + dimension), bsize = len(parts[MPIrank]) )
     A = PETSc.Mat(); A.createDense( (nSupport + dimension, nSupport + dimension) )
     A.setName("System Matrix");  A.setUp()
+    A.assemble()
+    print(A.owner_range)
     
     E = PETSc.Mat(); E.createDense( (nEval, nSupport + dimension) )
     E.setName("Evaluation Matrix");  E.setUp()
@@ -79,10 +95,11 @@ def main():
 
     supports = np.linspace(supportSpace[0], supportSpace[1], nSupport)
 
-    for row, i in enumerate(supports):
-        for col, j in enumerate(supports):
-            A.setValue(row, col, basisfunction(abs(i-j)))
-        b.setValue(row, testfunction(i)) # Add the solution to the RHS
+    
+    for row in range(*A.owner_range): # Rows are partioned
+        for col in range(*A.owner_range): # Seperate the problem in purely local ones
+            A.setValue(row, col, basisfunction(abs(supports[row]-supports[col])))
+        b.setValue(row, testfunction(supports[row])) # Add the solution to the RHS
 
         # Add the polynomial
         if dimension:
@@ -93,12 +110,16 @@ def main():
                 A.setValue(nSupport + 1 + d, row, i)
             
     A.assemble()
-
+    b.assemble()
+    A.view()
+    b.view()
     ksp = PETSc.KSP()
     ksp.create()
     ksp.setOperators(A)
     ksp.setFromOptions()
     ksp.solve(b, c)
+
+    sys.exit()
 
     evals = np.linspace(evalSpace[0], evalSpace[1], nEval)
 
