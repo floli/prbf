@@ -9,10 +9,10 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 
-nSupport = 10            # Number of support points
+nSupport = 9           # Number of support points
 supportSpace = (0, 1)   # Range in which the support points are equally distributed
-nEval = 9               # Number of evaluation points
-evalSpace = (-0.2, 1.2) # Range of evaluation points
+nEval = 6               # Number of evaluation points
+evalSpace = (0.0, 0.3) # Range of evaluation points
 
 # Dimension of interpolation. Used for adding a polynomial to the matrix. Set to zero to deactivate polynomial
 # f(x) = y with scalars x and y gives dimension = 2.
@@ -33,10 +33,10 @@ def basisfunction(radius):
         print("No Basisfunction selected.")
         sys.exit(-1)
 
-def partitions():
-    """ Partitions the support points evenly through all domains. """
+def partitions(lst):
+    """ Partitions the list evenly through all domains. """
     MPIsize = (MPI.COMM_WORLD.Get_size())
-    lst = range(nSupport)
+    # lst = range(nSupport)
     division = len(lst) / float(MPIsize)
     return [ lst[int(round(division * i)): int(round(division * (i + 1)))] for i in range(MPIsize) ]
     
@@ -75,25 +75,31 @@ def main():
     MPIsize = MPI.COMM_WORLD.Get_size()
     print("MPI Rank = ", MPIrank)
     print("MPI Size = ", MPIsize)
-    parts = partitions()
     
-    print("Dimension= ", nSupport + dimension, "bsize = ", len(parts[MPIrank]))
+    supports = np.linspace(supportSpace[0], supportSpace[1], nSupport)
+    evals = np.linspace(evalSpace[0], evalSpace[1], nEval)
+
+    sParts = partitions(supports)
+    eParts = partitions(evals)
+
+    print("Rank = ", MPIrank, " sParts = ", sParts[MPIrank])
+    print("Rank = ", MPIrank, " eParts = ", eParts[MPIrank])
+    
     MPI.COMM_WORLD.Barrier() # Just to keep the output together
     
-    # A = PETSc.Mat(); A.createDense( (nSupport + dimension, nSupport + dimension), bsize = len(parts[MPIrank]) )
-    A = PETSc.Mat(); A.createDense( (nSupport + dimension, nSupport + dimension) )
-    A.setName("System Matrix");  A.setUp()
+    A = PETSc.Mat(); A.createDense( size = ((len(sParts[MPIrank]), PETSc.DETERMINE), (len(sParts[MPIrank]), PETSc.DETERMINE)) )
+    # A = PETSc.Mat(); A.createDense( (nSupport + dimension, nSupport + dimension) )
+    A.setName("System Matrix");  A.setFromOptions(); A.setUp()
     A.assemble()
     print(A.owner_range)
     
-    E = PETSc.Mat(); E.createDense( (nEval, nSupport + dimension) )
-    E.setName("Evaluation Matrix");  E.setUp()
+    # E = PETSc.Mat(); E.createDense( (nEval, nSupport + dimension) )
+    E = PETSc.Mat(); E.createDense( size = ((len(eParts[MPIrank]), PETSc.DETERMINE), (len(sParts[MPIrank]), PETSc.DETERMINE)) )
+    E.setName("Evaluation Matrix");  E.setFromOptions(); E.setUp()
     
     c = A.createVecRight(); c.setName("Coefficients")
     b = A.createVecRight(); b.setName("RHS Function Values")
     interp = E.createVecLeft(); interp.setName("interp")
-
-    supports = np.linspace(supportSpace[0], supportSpace[1], nSupport)
 
     
     for row in range(*A.owner_range): # Rows are partioned
@@ -112,20 +118,16 @@ def main():
     A.assemble()
     b.assemble()
     A.view()
-    b.view()
+    # b.view()
     ksp = PETSc.KSP()
     ksp.create()
     ksp.setOperators(A)
     ksp.setFromOptions()
     ksp.solve(b, c)
 
-    sys.exit()
-
-    evals = np.linspace(evalSpace[0], evalSpace[1], nEval)
-
-    for row, i in enumerate(evals):
-        for col, j in enumerate(supports):
-            E.setValue(row, col, basisfunction(abs(i - j)))
+    for row in range(*E.owner_range):
+        for col in range(*E.owner_range):
+            E.setValue(row, col, basisfunction(abs(evals[row] - evals[col])))
 
         # Add the polynomial
         if dimension:
@@ -133,9 +135,20 @@ def main():
             for d in range(dimension-1):
                 E.setValue(row, nSupport + 1 + d, i)
     E.assemble()
+    E.view()
     E.mult(c, interp);
-              
-    plot(supports, evals, interp.array, c.array)
+
+    scatter, interp0 = PETSc.Scatter.toZero(interp)
+    scatter.scatter(interp, interp0)
+    scatter, c0 = PETSc.Scatter.toZero(c)
+    scatter.scatter(c, c0)
+    
+    if MPIrank == 0:
+        plot(supports, evals, interp0.array, c0.array)
+        
+    # ipdb.set_trace()
+    sys.exit()
+
 
 
 if __name__ == '__main__':
