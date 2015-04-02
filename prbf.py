@@ -9,10 +9,23 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 
+eMesh = {1: [np.linspace(0, 1, 4) ],
+         2: [np.linspace(0, 0.5, 2, False),
+             np.linspace(0.5,1, 2 )],
+         4: [np.linspace(0, 0.1, 5, False),
+             np.linspace(0.1, 0.3, 10, False),
+             np.linspace(0.3, 0.7, 10, False),
+             np.linspace(0.7,1 , 10, False), ]
+         }
+
+
+MPIrank = MPI.COMM_WORLD.Get_rank()
+MPIsize = MPI.COMM_WORLD.Get_size()
+
 nSupport = 9           # Number of support points
 supportSpace = (0, 1)   # Range in which the support points are equally distributed
 nEval = 6               # Number of evaluation points
-evalSpace = (0.0, 0.3) # Range of evaluation points
+evalSpace = (0.0, 1) # Range of evaluation points
 
 # Dimension of interpolation. Used for adding a polynomial to the matrix. Set to zero to deactivate polynomial
 # f(x) = y with scalars x and y gives dimension = 2.
@@ -39,10 +52,12 @@ def partitions(lst):
     # lst = range(nSupport)
     division = len(lst) / float(MPIsize)
     return [ lst[int(round(division * i)): int(round(division * (i + 1)))] for i in range(MPIsize) ]
+
     
     
-def plot(supports, evals, interp, coeffs):
+def plot(supports, interp, coeffs):
     """ Support Points, Evaluation Point, Interpolation Results, Coefficients"""
+    evals =  np.concatenate( [i for i in eMesh[MPIsize]] )
     sRange = np.linspace(min(supportSpace[0], evalSpace[0]), max(supportSpace[1], evalSpace[1]), 1000)  # Super range
     f, axes = plt.subplots(3, sharex=True)
     axes[0].plot(sRange, testfunction(sRange), "b") # Plot the original function
@@ -57,44 +72,52 @@ def plot(supports, evals, interp, coeffs):
     axes[1].legend()
     axes[1].grid()
 
+    # Plot the actual basisfunction
     for c in zip(supports, coeffs):
         basis = basisfunction(abs(c[0]-sRange))*c[1]
         axes[2].plot(sRange, basis)
     if dimension:
         poly = coeffs[nSupport] + coeffs[nSupport + 1] * sRange
         axes[2].plot(sRange, poly)
-        
+
+    ipdb.set_trace()
+    # Plot a vertical line at domain boundaries
+    if MPIsize > 1:
+        for i in eMesh[MPIsize]:
+            axes[0].axvline(x = max(i))
+            axes[1].axvline(x = max(i))
 
     axes[2].grid()
     plt.tight_layout()
     plt.show()
 
+def Print(*s):
+    out = " ".join( [ str(i) for i in s] )
+    print("[%s] %s" % (MPIrank, out))
+    MPI.COMM_WORLD.Barrier() # Just to keep the output together
+
 
 def main():
-    MPIrank = MPI.COMM_WORLD.Get_rank()
-    MPIsize = MPI.COMM_WORLD.Get_size()
     print("MPI Rank = ", MPIrank)
     print("MPI Size = ", MPIsize)
-    
+
     supports = np.linspace(supportSpace[0], supportSpace[1], nSupport)
-    evals = np.linspace(evalSpace[0], evalSpace[1], nEval)
+    sParts = partitions(supports)[MPIrank]
+    
+    eParts = eMesh[MPIsize][MPIrank] # np.array of positions to evaluate
+    
 
-    sParts = partitions(supports)
-    eParts = partitions(evals)
-
-    print("Rank = ", MPIrank, " sParts = ", sParts[MPIrank])
-    print("Rank = ", MPIrank, " eParts = ", eParts[MPIrank])
+    Print("sParts = ", sParts)
+    Print("eParts = ", eParts)
     
     MPI.COMM_WORLD.Barrier() # Just to keep the output together
     
-    A = PETSc.Mat(); A.createDense( size = ((len(sParts[MPIrank]), PETSc.DETERMINE), (len(sParts[MPIrank]), PETSc.DETERMINE)) )
+    A = PETSc.Mat(); A.createDense( size = ((len(sParts), PETSc.DETERMINE), (len(sParts), PETSc.DETERMINE)) )
     # A = PETSc.Mat(); A.createDense( (nSupport + dimension, nSupport + dimension) )
     A.setName("System Matrix");  A.setFromOptions(); A.setUp()
     A.assemble()
-    print(A.owner_range)
-    
     # E = PETSc.Mat(); E.createDense( (nEval, nSupport + dimension) )
-    E = PETSc.Mat(); E.createDense( size = ((len(eParts[MPIrank]), PETSc.DETERMINE), (len(sParts[MPIrank]), PETSc.DETERMINE)) )
+    E = PETSc.Mat(); E.createDense( size = ((len(eParts), PETSc.DETERMINE), (len(sParts), PETSc.DETERMINE)) )
     E.setName("Evaluation Matrix");  E.setFromOptions(); E.setUp()
     
     c = A.createVecRight(); c.setName("Coefficients")
@@ -118,6 +141,7 @@ def main():
     A.assemble()
     b.assemble()
     A.view()
+    # A.view(PETSc.Viewer.DRAW().createDraw())
     # b.view()
     ksp = PETSc.KSP()
     ksp.create()
@@ -125,9 +149,11 @@ def main():
     ksp.setFromOptions()
     ksp.solve(b, c)
 
+    offset = E.owner_range[0]
     for row in range(*E.owner_range):
         for col in range(*E.owner_range):
-            E.setValue(row, col, basisfunction(abs(evals[row] - evals[col])))
+            print(row, col, offset, eParts)
+            E.setValue(row, col, basisfunction(abs(eParts[row-offset] - eParts[col-offset]))) # global to local
 
         # Add the polynomial
         if dimension:
@@ -135,7 +161,7 @@ def main():
             for d in range(dimension-1):
                 E.setValue(row, nSupport + 1 + d, i)
     E.assemble()
-    E.view()
+
     E.mult(c, interp);
 
     scatter, interp0 = PETSc.Scatter.toZero(interp)
@@ -144,9 +170,8 @@ def main():
     scatter.scatter(c, c0)
     
     if MPIrank == 0:
-        plot(supports, evals, interp0.array, c0.array)
+        plot(supports, interp0.array, c0.array)
         
-    # ipdb.set_trace()
     sys.exit()
 
 
