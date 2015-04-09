@@ -1,3 +1,5 @@
+#!env python3
+
 import ipdb
 
 import sys
@@ -10,7 +12,7 @@ import numpy as np
 
 
 eMesh = {1: [np.linspace(0, 1, 4) ],
-         2: [np.linspace(0, 0.5, 2, False),
+         2: [np.linspace(0, 0.5, 2, False), # False == Do no include endpoint in range
              np.linspace(0.5,1, 2 )],
          4: [np.linspace(0, 0.1, 5, False),
              np.linspace(0.1, 0.3, 10, False),
@@ -24,8 +26,6 @@ MPIsize = MPI.COMM_WORLD.Get_size()
 
 nSupport = 9           # Number of support points
 supportSpace = (0, 1)   # Range in which the support points are equally distributed
-nEval = 6               # Number of evaluation points
-evalSpace = (0.0, 1) # Range of evaluation points
 
 # Dimension of interpolation. Used for adding a polynomial to the matrix. Set to zero to deactivate polynomial
 # f(x) = y with scalars x and y gives dimension = 2.
@@ -54,20 +54,22 @@ def partitions(lst):
     return [ lst[int(round(division * i)): int(round(division * (i + 1)))] for i in range(MPIsize) ]
 
     
-    
 def plot(supports, interp, coeffs):
     """ Support Points, Evaluation Point, Interpolation Results, Coefficients"""
     evals =  np.concatenate( [i for i in eMesh[MPIsize]] )
-    sRange = np.linspace(min(supportSpace[0], evalSpace[0]), max(supportSpace[1], evalSpace[1]), 1000)  # Super range
+    sRange = np.linspace(supportSpace[0]-0.2, supportSpace[1]+0.2, 1000)  # Range a bit larget than the support space
     f, axes = plt.subplots(3, sharex=True)
+    
     axes[0].plot(sRange, testfunction(sRange), "b") # Plot the original function
     axes[0].plot(supports, testfunction(supports), "bo", label = "Supports") # Plot the support points
     axes[0].plot(evals, interp, "ro-", label = "Evals") # Plot the evaluation points and values
     axes[0].legend()
     axes[0].grid()
+
+    # Calculate and plot error
     delta = [ interp[i] - testfunction(x) for i, x in enumerate(evals) ]
     rms = np.sqrt( np.mean(np.power(delta, 2)) )
-    axes[1].plot(evals, delta, "ro-", label = "Delta") # Plot error
+    axes[1].plot(evals, delta, "ro-", label = "Delta")
     axes[1].set_title("RMS = " + str(rms) )
     axes[1].legend()
     axes[1].grid()
@@ -79,15 +81,22 @@ def plot(supports, interp, coeffs):
     if dimension:
         poly = coeffs[nSupport] + coeffs[nSupport + 1] * sRange
         axes[2].plot(sRange, poly)
-
-    ipdb.set_trace()
-    # Plot a vertical line at domain boundaries
-    if MPIsize > 1:
-        for i in eMesh[MPIsize]:
-            axes[0].axvline(x = max(i))
-            axes[1].axvline(x = max(i))
-
     axes[2].grid()
+
+    if MPIsize > 1:
+        # Plot a vertical line at domain boundaries of support points
+        sParts = partitions(supports)
+        middle = (min(sParts[1])-max(sParts[0])) / 2 # We assume that the all points are equidistant
+        for i in sParts:
+            axes[0].axvline(x = max(i) + middle, color='b', linestyle=':')  # Add a small eps to show which domain
+            axes[1].axvline(x = max(i) + middle, color='b', linestyle=':')  # this point belongs to.
+
+        # Plot a vertical line at domain boundaries of evaluation points
+        middle = (min(eMesh[MPIsize][1])-max(eMesh[MPIsize][0])) / 2 # We assume that the all points are equidistant
+        for i in eMesh[MPIsize]:
+            axes[0].axvline(x = max(i) + middle, color='r', linestyle='--')  # Add a small eps to show which domain
+            axes[1].axvline(x = max(i) + middle, color='r', linestyle='--')  # this point belongs to.
+
     plt.tight_layout()
     plt.show()
 
