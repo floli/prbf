@@ -1,7 +1,6 @@
 #!env python3
 
 import ipdb
-
 import sys
 import petsc4py
 petsc4py.init(sys.argv)
@@ -11,8 +10,8 @@ import numpy as np
 from phelper import *
 
 eMesh = {1: [np.linspace(0, 1, 4) ],
-         2: [np.linspace(0, 0.5, 2, False), # False == Do no include endpoint in range
-             np.linspace(0.5,1, 2 )],
+         2: [np.linspace(0, 0.5, 5, False), # False == Do no include endpoint in range
+             np.linspace(0.5, 1, 8 )],
          4: [np.linspace(0, 0.25, 5, False),
              np.linspace(0.25, 0.5, 5, False),
              np.linspace(0.5, 0.75, 5, False),
@@ -23,7 +22,7 @@ eMesh = {1: [np.linspace(0, 1, 4) ],
 MPIrank = MPI.COMM_WORLD.Get_rank()
 MPIsize = MPI.COMM_WORLD.Get_size()
 
-nSupport = 30          # Number of support points
+nSupport = 10         # Number of support points
 supportSpace = (-0.1, 1.1)  # Range in which the support points are equally distributed
 
 # Dimension of interpolation. Used for adding a polynomial to the matrix. Set to zero to deactivate polynomial
@@ -37,7 +36,6 @@ def main():
     
     ePoints = eMesh[MPIsize][MPIrank] # np.array of positions to evaluate
     
-
     # Print("sPoints = ", sPoints)
     # Print("ePoints = ", ePoints)
     
@@ -48,6 +46,7 @@ def main():
     A.setName("System Matrix");  A.setFromOptions(); A.setUp()
     A.assemble()
     # E = PETSc.Mat(); E.createDense( (nEval, nSupport + dimension) )
+    Print("Size = ",  (len(ePoints), PETSc.DETERMINE), (len(sPoints)))
     E = PETSc.Mat(); E.createDense( size = ((len(ePoints), PETSc.DETERMINE), (len(sPoints), PETSc.DETERMINE)) )
     E.setName("Evaluation Matrix");  E.setFromOptions(); E.setUp()
     
@@ -81,13 +80,14 @@ def main():
     ksp.setFromOptions()
     ksp.solve(b, c)
 
-    Print("E Local Size = ", E.getLocalSize())
+    Print("E Local  Size = ", E.getLocalSize())
     Print("E Global Size = ", E.getSize())
     Print("E Owner Range", E.owner_range)
     offset = E.owner_range[0]
     for row in range(*E.owner_range):
-        for col in range(len(supports)):
-            Print("Row = ", row, ", Col = ", col, ", Offset = ", offset)
+        PrintNB("Row = ", row)
+        for col in range(E.getSize()[1]):
+            PrintNB("Row = ", row, ", Col = ", col, ", Offset = ", offset)
             E.setValue(row, col, basisfunction(abs(ePoints[row-offset] - supports[col])))
         
         # Add the polynomial

@@ -9,7 +9,10 @@ testfunction = lambda a:  a**5 - a**4 + a**3 - a**2 + 1 # [0, 1]
 
 def basisfunction(radius):
     function = "gauss"
+    cutoff = 0.2
 
+    if radius > cutoff:
+        return 0
     if function == "gauss":
         shape = 8
         return np.exp( - (shape*radius)**2)
@@ -53,7 +56,7 @@ def plot(supports, eMesh, interp, coeffs, dimension):
 
     # Plot the actual basisfunction
     for c in zip(supports, coeffs):
-        basis = basisfunction(abs(c[0]-sRange))*c[1]
+        basis = [basisfunction(abs(c[0] - s))*c[1] for s in sRange]
         axes[2].plot(sRange, basis)
     if dimension:
         poly = coeffs[nSupport] + coeffs[nSupport + 1] * sRange
@@ -77,7 +80,12 @@ def plot(supports, eMesh, interp, coeffs, dimension):
     plt.tight_layout()
     plt.show()
 
-def Print(*s):
+def Print(*s, barrier=True):
+    ''' Prints with MPI rank and blocks to keep the output together. Be careful when used inside loops.'''
+    PrintNB(s)
+    MPI.COMM_WORLD.Barrier() # Just to keep the output together
+
+def PrintNB(*s):
     out = " ".join( [ str(i) for i in s] )
     print("[%s] %s" % (MPIrank, out))
-    MPI.COMM_WORLD.Barrier() # Just to keep the output together
+    
