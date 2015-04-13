@@ -31,6 +31,7 @@ dimension = 0
 
 
 def main():
+    shuffle_mesh(eMesh)
     supports = np.linspace(supportSpace[0], supportSpace[1], nSupport)
     sPoints = partitions(supports)[MPIrank]
     
@@ -38,8 +39,6 @@ def main():
     
     # Print("sPoints = ", sPoints)
     # Print("ePoints = ", ePoints)
-    
-    MPI.COMM_WORLD.Barrier() # Just to keep the output together
     
     A = PETSc.Mat(); A.createDense( size = ((len(sPoints), PETSc.DETERMINE), (len(sPoints), PETSc.DETERMINE)) )
     # A = PETSc.Mat(); A.createDense( (nSupport + dimension, nSupport + dimension) )
@@ -57,7 +56,7 @@ def main():
 
     for row in range(*A.owner_range): # Rows are partioned
         # for col in range(*A.owner_range): # Seperate the problem in purely local ones
-        for col in range(len(supports)):
+        for col in range(nSupport):
             A.setValue(row, col, basisfunction(abs(supports[row]-supports[col])))
         b.setValue(row, testfunction(supports[row])) # Add the solution to the RHS
 
@@ -71,7 +70,7 @@ def main():
             
     A.assemble()
     b.assemble()
-    # A.view()
+    A.view()
     A.view(PETSc.Viewer.DRAW().createDraw()) # Use command line -draw_pause <sec>.
     # b.view()
     ksp = PETSc.KSP()
@@ -85,9 +84,9 @@ def main():
     Print("E Owner Range", E.owner_range)
     offset = E.owner_range[0]
     for row in range(*E.owner_range):
-        PrintNB("Row = ", row)
+        # PrintNB("Row = ", row)
         for col in range(E.getSize()[1]):
-            PrintNB("Row = ", row, ", Col = ", col, ", Offset = ", offset)
+            # PrintNB("Row = ", row, ", Col = ", col, ", Offset = ", offset)
             E.setValue(row, col, basisfunction(abs(ePoints[row-offset] - supports[col])))
         
         # Add the polynomial
@@ -96,11 +95,10 @@ def main():
             for d in range(dimension-1):
                 E.setValue(row, nSupport + 1 + d, i)
 
-    Print("Finished E loop.")
     E.assemble()
     E.view(PETSc.Viewer.DRAW().createDraw()) # Use command line -draw_pause <sec>.
 
-    E.view()
+    # E.view()
     E.mult(c, interp);
 
     scatter, interp0 = PETSc.Scatter.toZero(interp)

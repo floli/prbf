@@ -1,3 +1,5 @@
+import ipdb
+
 from mpi4py import MPI
 import numpy as np
 import matplotlib.pyplot as plt
@@ -5,11 +7,12 @@ import matplotlib.pyplot as plt
 MPIrank = MPI.COMM_WORLD.Get_rank()
 MPIsize = MPI.COMM_WORLD.Get_size()
 
-testfunction = lambda a:  a**5 - a**4 + a**3 - a**2 + 1 # [0, 1]
+# testfunction = lambda a:  a**5 - a**4 + a**3 - a**2 + 1 # [0, 1]
+testfunction = lambda a:  np.sin(a*8) # [0, 1]
 
 def basisfunction(radius):
     function = "gauss"
-    cutoff = 0.2
+    cutoff = 0.5
 
     if radius > cutoff:
         return 0
@@ -23,6 +26,16 @@ def basisfunction(radius):
         sys.exit(-1)
         
 
+def shuffle_mesh(mesh):
+    """ Shuffle the mesh to recreate to non-ordered input points. """
+    for i in mesh[MPIsize]:
+        np.random.shuffle(i)
+
+def sort_mesh(evals, interp):
+    """ Sort the mesh for plotting. """
+    index = np.argsort(evals)
+    return evals[index], interp[index]
+
 
 def partitions(lst):
     """ Partitions the list evenly through all domains. """
@@ -35,7 +48,9 @@ def partitions(lst):
 def plot(supports, eMesh, interp, coeffs, dimension):
     """ Support Points, Evaluation Point, Interpolation Results, Coefficients"""
     evals =  np.concatenate( [i for i in eMesh[MPIsize]] )
-    # sRange = np.linspace(supportSpace[0]-0.2, supportSpace[1]+0.2, 1000)  # Range a bit larget than the support space
+    evals, interp = sort_mesh(evals, interp)
+
+    # sRange = np.linspace(supportSpace[0]-0.2, supportSpace[1]+0.2, 1000)  # Range a bit larger than the support space
     sRange = np.linspace(min(supports)-0.2, max(supports)+0.2, 1000)
     
     f, axes = plt.subplots(3, sharex=True)
@@ -68,14 +83,14 @@ def plot(supports, eMesh, interp, coeffs, dimension):
         sParts = partitions(supports)
         middle = (min(sParts[1])-max(sParts[0])) / 2 # We assume that the all points are equidistant
         for i in sParts:
-            axes[0].axvline(x = max(i) + middle, color='b', linestyle=':')  # Add a small eps to show which domain
-            axes[1].axvline(x = max(i) + middle, color='b', linestyle=':')  # this point belongs to.
+            axes[0].axvline(x = max(i) + middle, color='b', linestyle=':', linewidth=2)  # Add a small eps to show which domain
+            axes[1].axvline(x = max(i) + middle, color='b', linestyle=':', linewidth=2)  # this point belongs to.
 
         # Plot a vertical line at domain boundaries of evaluation points
         middle = (min(eMesh[MPIsize][1])-max(eMesh[MPIsize][0])) / 2 # We assume that the all points are equidistant
         for i in eMesh[MPIsize]:
-            axes[0].axvline(x = max(i) + middle, color='r', linestyle='--')  # Add a small eps to show which domain
-            axes[1].axvline(x = max(i) + middle, color='r', linestyle='--')  # this point belongs to.
+            axes[0].axvline(x = max(i) + middle, color='r', linestyle='--', linewidth=2)  # Add a small eps to show which domain
+            axes[1].axvline(x = max(i) + middle, color='r', linestyle='--', linewidth=2)  # this point belongs to.
 
     plt.tight_layout()
     plt.show()
