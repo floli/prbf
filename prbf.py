@@ -31,13 +31,9 @@ polyparams = dimension+1 if dimension else 0
 
 def main():
     shuffle_mesh(eMesh)
+    ePoints = eMesh[MPIsize][MPIrank] # np.array of positions to evaluate
     supports = np.linspace(supportSpace[0], supportSpace[1], nSupport)
     sPoints = partitions(supports)[MPIrank]
-    
-    ePoints = eMesh[MPIsize][MPIrank] # np.array of positions to evaluate
-    
-    # Print("sPoints = ", sPoints)
-    # Print("ePoints = ", ePoints)
 
     A = PETSc.Mat(); A.create()
     E = PETSc.Mat(); E.create()
@@ -47,9 +43,7 @@ def main():
     else:
         A.setSizes( size = ((len(sPoints), PETSc.DETERMINE), (len(sPoints), PETSc.DETERMINE)) )
         E.setSizes( size = ((len(ePoints), PETSc.DETERMINE), (len(sPoints), PETSc.DETERMINE)) )
-    # A = PETSc.Mat(); A.createDense( (nSupport + dimension, nSupport + dimension) )
     A.setName("System Matrix");  A.setFromOptions(); A.setUp()
-    # E = PETSc.Mat(); E.createDense( (nEval, nSupport + dimension) )
     E.setName("Evaluation Matrix");  E.setFromOptions(); E.setUp()
     
     c = A.createVecRight(); c.setName("Coefficients")
@@ -57,15 +51,13 @@ def main():
     interp = E.createVecLeft(); interp.setName("interp")
 
     for row in range(*A.owner_range): # Rows are partioned
-        # for col in range(*A.owner_range): # Seperate the problem in purely local ones
-        if row >= len(supports): break
+        if row >= len(supports): break # We are not setting the rows for the polynomial, this is done when setting each column.
         for col in range(nSupport):
             v = basisfunction(abs(supports[row]-supports[col]))
-            if v != 0:
+            if v != 0 or row == col: # Set 0 explicitly only on the main diagonal, petsc requirement
                 A.setValue(row, col, v)
-            elif row == col: # Set 0 explicitly only on the main diagonal, petsc requirement
-                A.setValue(row, row, 0)
         b.setValue(row, testfunction(supports[row])) # Add the solution to the RHS
+
         # Add the polynomial
         if dimension:
             A.setValue(row, nSupport, 1) # Const part of the polynom
@@ -86,14 +78,9 @@ def main():
     Print("E Local  Size = ", E.getLocalSize())
     Print("E Owner Range", E.owner_range)
 
-    
-    # b.view()
-    
     offset = E.owner_range[0]
     for row in range(*E.owner_range):
-        # PrintNB("Row = ", row)
         for col in range(E.getSize()[1]-polyparams):
-            PrintNB("Row = ", row, ", Col = ", col, ", Offset = ", offset)
             E.setValue(row, col, basisfunction(abs(ePoints[row-offset] - supports[col])))
         
         # Add the polynomial
@@ -105,7 +92,6 @@ def main():
     E.assemble()
     E.view(PETSc.Viewer.DRAW().createDraw()) # Use command line -draw_pause <sec>.
 
-    # E.view()
     ksp = PETSc.KSP()
     ksp.create()
     ksp.setOperators(A)
@@ -122,8 +108,6 @@ def main():
     if MPIrank == 0:
         plot(supports, eMesh, interp0.array, c0.array, dimension)
         
-    sys.exit()
-
 
 
 if __name__ == '__main__':
