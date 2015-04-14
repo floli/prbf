@@ -7,12 +7,12 @@ import matplotlib.pyplot as plt
 MPIrank = MPI.COMM_WORLD.Get_rank()
 MPIsize = MPI.COMM_WORLD.Get_size()
 
-# testfunction = lambda a:  a**5 - a**4 + a**3 - a**2 + 1 # [0, 1]
-testfunction = lambda a:  np.sin(a*8) # [0, 1]
+testfunction = lambda a:  a**5 - a**4 + a**3 - a**2 + 1 # [0, 1]
+# testfunction = lambda a:  np.sin(a*8) # [0, 1]
 
 def basisfunction(radius):
     function = "gauss"
-    cutoff = 0.5
+    cutoff = 0.4
 
     if radius > cutoff:
         return 0
@@ -32,7 +32,7 @@ def shuffle_mesh(mesh):
         np.random.shuffle(i)
 
 def sort_mesh(evals, interp):
-    """ Sort the mesh for plotting. """
+    """ Sort (evals, interp) for plotting. """
     index = np.argsort(evals)
     return evals[index], interp[index]
 
@@ -46,7 +46,7 @@ def partitions(lst):
 
     
 def plot(supports, eMesh, interp, coeffs, dimension):
-    """ Support Points, Evaluation Point, Interpolation Results, Coefficients"""
+    """ Support Points, Evaluation Point, Interpolation Results, Coefficients """
     evals =  np.concatenate( [i for i in eMesh[MPIsize]] )
     evals, interp = sort_mesh(evals, interp)
 
@@ -74,7 +74,7 @@ def plot(supports, eMesh, interp, coeffs, dimension):
         basis = [basisfunction(abs(c[0] - s))*c[1] for s in sRange]
         axes[2].plot(sRange, basis)
     if dimension:
-        poly = coeffs[nSupport] + coeffs[nSupport + 1] * sRange
+        poly = coeffs[-2] + coeffs[-1] * sRange
         axes[2].plot(sRange, poly)
     axes[2].grid()
 
@@ -97,7 +97,7 @@ def plot(supports, eMesh, interp, coeffs, dimension):
 
 def Print(*s, barrier=True):
     ''' Prints with MPI rank and blocks to keep the output together. Be careful when used inside loops.'''
-    PrintNB(s)
+    PrintNB(*s)
     MPI.COMM_WORLD.Barrier() # Just to keep the output together
 
 def PrintNB(*s):
