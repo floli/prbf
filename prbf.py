@@ -30,7 +30,7 @@ dimension = 1
 polyparams = dimension+1 if dimension else 0
 
 def main():
-    shuffle_mesh(eMesh)
+    # shuffle_mesh(eMesh)
     ePoints = eMesh[MPIsize][MPIrank] # np.array of positions to evaluate
     supports = np.linspace(supportSpace[0], supportSpace[1], nSupport)
     sPoints = partitions(supports)[MPIrank]
@@ -54,7 +54,7 @@ def main():
         if row >= len(supports): break # We are not setting the rows for the polynomial, this is done when setting each column.
         for col in range(nSupport):
             v = basisfunction(abs(supports[row]-supports[col]))
-            if v != 0 or row == col: # Set 0 explicitly only on the main diagonal, petsc requirement
+            if v != 0:
                 A.setValue(row, col, v)
         b.setValue(row, testfunction(supports[row])) # Add the solution to the RHS
 
@@ -66,17 +66,19 @@ def main():
                 A.setValue(row, nSupport + 1 + d, supports[row]) # Value of support point
                 A.setValue(nSupport + 1 + d, row, supports[row])
 
-        
+    A.assemble(PETSc.Mat.AssemblyType.FLUSH_ASSEMBLY)
+    zeros = A.createVecRight();
+    A.setDiagonal(zeros, PETSc.InsertMode.ADD_VALUES)
     A.assemble()
     b.assemble()
-    A.view()
-    A.view(PETSc.Viewer.DRAW().createDraw()) # Use command line -draw_pause <sec>.
+    # A.view()
+    # A.view(PETSc.Viewer.DRAW().createDraw()) # Use command line -draw_pause <sec>.
 
-    Print("polyparams= ", polyparams)
-    Print("A Size =", A.getSize())
-    Print("E Global Size = ", E.getSize())
-    Print("E Local  Size = ", E.getLocalSize())
-    Print("E Owner Range", E.owner_range)
+    # Print("polyparams= ", polyparams)
+    # Print("A Size =", A.getSize())
+    # Print("E Global Size = ", E.getSize())
+    # Print("E Local  Size = ", E.getLocalSize())
+    # Print("E Owner Range", E.owner_range)
 
     offset = E.owner_range[0]
     for row in range(*E.owner_range):
@@ -90,16 +92,19 @@ def main():
                 E.setValue(row, nSupport + 1 + d, ePoints[row-offset])
 
     E.assemble()
-    E.view(PETSc.Viewer.DRAW().createDraw()) # Use command line -draw_pause <sec>.
-
+    # E.view()
+    # E.view(PETSc.Viewer.DRAW().createDraw()) # Use command line -draw_pause <sec>.
+    b.view()
     ksp = PETSc.KSP()
     ksp.create()
-    ksp.setOperators(A)
+    ksp.setOperators(A, A)
     ksp.setFromOptions()
     ksp.solve(b, c)
 
     E.mult(c, interp);
-
+    c.view()
+    interp.view()
+    sys.exit()
     scatter, interp0 = PETSc.Scatter.toZero(interp)
     scatter.scatter(interp, interp0)
     scatter, c0 = PETSc.Scatter.toZero(c)
