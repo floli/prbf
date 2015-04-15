@@ -1,18 +1,27 @@
 #include <vector>
 
-template<typename T>
-std::vector<double> linspace(T start_in, T end_in, int num_in)
-{
-  double start = static_cast<double>(start_in);
-  double end   = static_cast<double>(end_in);
-  double num   = static_cast<double>(num_in);
-  double delta = (end - start) / (num - 1);
+#include <iostream>
 
-  std::vector<double> linspaced(num - 1);
-  for (int i=0; i < num; ++i)
-  {
-    linspaced[i] = start + delta * i;
+using std::cout;
+using std::endl;
+
+
+
+template<typename T>
+std::vector<double> linspace(T start, T stop, int num = 50, bool endpoint = true)
+{
+  double step = 0;
+  
+  if (endpoint) {
+    step = (stop - start) / (static_cast<double>(num)-1);
   }
-  linspaced.push_back(end);
-  return linspaced;
+  else {
+    step = (stop - start) / (static_cast<double>(num));
+  }
+  std::vector<double> ls(num);
+  for (int i = 0; i < num; ++i)
+  {
+    ls[i] = start + step * i;
+  }
+  return ls;
 }
