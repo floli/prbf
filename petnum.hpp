@@ -16,10 +16,12 @@ class Vector
 public:
   Vec vector;
 
+  enum LEFTRIGHT { LEFT, RIGHT };
+  
   /// Creates a new vector on the given MPI communicator.
   Vector(MPI_Comm comm = PETSC_COMM_WORLD, std::string name = "");
 
-  /// Duplicates type, row layout etc. (not values) of v.
+  /// Use Vec v as vector.
   Vector(Vec &v, std::string name = "");
 
   /// Duplicates type, row layout etc. (not values) of v.
@@ -28,7 +30,7 @@ public:
   /// Constructs a vector with the same number of rows.
   Vector(Mat &m, std::string name = "");
 
-  Vector(Matrix &m, std::string name = "");
+  Vector(Matrix &m, std::string name = "", LEFTRIGHT type = LEFT);
 
   ~Vector();
 
@@ -70,8 +72,10 @@ public:
 
   ~Matrix();
 
+  void assemble(MatAssemblyType type = MAT_FINAL_ASSEMBLY);
+    
   /// Initializes matrix of given size and type
-  void init(PetscInt localRows, PetscInt localCols, PetscInt globalRows, PetscInt globalCols, MatType type);
+  void init(PetscInt localRows, PetscInt localCols, PetscInt globalRows, PetscInt globalCols, MatType type = NULL);
 
   // Destroys and recreate the matrix on the same communicator  
   void reset();
@@ -81,18 +85,21 @@ public:
 
   void setValue(PetscInt row, PetscInt col, PetscScalar value);
   
-  void assemble(MatAssemblyType type = MAT_FINAL_ASSEMBLY);
-  
   void fill_with_randoms();
   
   void set_column(Vector &v, int col);
 
+  std::pair<PetscInt, PetscInt> getSize();
+  
   /// Returns a pair that mark the beginning and end of the matrix' ownership range. Use first und second to access.
   std::pair<PetscInt, PetscInt> ownerRange();
 
   void write(std::string filename);
   
   void view();
+
+  void viewDraw();
+  
 };
 }
 
