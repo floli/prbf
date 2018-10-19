@@ -22,7 +22,7 @@ eMesh = {1: [np.linspace(0, 1, 4) ],
 MPIrank = MPI.COMM_WORLD.Get_rank()
 MPIsize = MPI.COMM_WORLD.Get_size()
 
-nSupport = 5        # Number of support points
+nSupport = 10       # Number of support points
 supportSpace = (-0.1, 1.1)  # Range in which the support points are equally distributed
 
 # Dimension of interpolation. Used for adding a polynomial to the matrix. Set to zero to deactivate polynomial
@@ -72,7 +72,7 @@ def main():
     A.assemble()
     b.assemble()
     # A.view()
-    # A.view(PETSc.Viewer.DRAW().createDraw()) # Use command line -draw_pause <sec>.
+    A.view(PETSc.Viewer.DRAW().createDraw()) # Use command line -draw_pause <sec>.
 
     # Print("polyparams= ", polyparams)
     # Print("A Size =", A.getSize())
@@ -93,7 +93,7 @@ def main():
 
     E.assemble()
     # E.view()
-    # E.view(PETSc.Viewer.DRAW().createDraw()) # Use command line -draw_pause <sec>.
+    E.view(PETSc.Viewer.DRAW().createDraw()) # Use command line -draw_pause <sec>.
     b.view()
     ksp = PETSc.KSP()
     ksp.create()
@@ -104,7 +104,7 @@ def main():
     E.mult(c, interp);
     c.view()
     interp.view()
-    sys.exit()
+
     scatter, interp0 = PETSc.Scatter.toZero(interp)
     scatter.scatter(interp, interp0)
     scatter, c0 = PETSc.Scatter.toZero(c)

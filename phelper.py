@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 MPIrank = MPI.COMM_WORLD.Get_rank()
 MPIsize = MPI.COMM_WORLD.Get_size()
 
-testfunction = lambda a:  a**5 - a**4 + a**3 - a**2 + 1 # [0, 1]
+testfunction = lambda a:  a**5 - a**4 + a**3 - a**2 + 1 + 0.4*np.sin(a*10) # [0, 1]
 # testfunction = lambda a:  np.sin(a*8) # [0, 1]
 
 def basisfunction(radius):

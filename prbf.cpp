@@ -2,7 +2,7 @@
 #include <map>
 
 #include "petscksp.h"
-#include "petnum.hpp"
+#include "Petsc.hpp"
 #include "chelper.hpp"
 #include "prettyprint.hpp"
 
@@ -12,13 +12,17 @@ using std::endl;
 const int dimension = 1;
 const int polyparams = dimension ? dimension+1 : 0;
 
-const int nSupport = 5;
+const int nSupport = 10;
 auto supports = linspace(-0.1, 1.1, nSupport);
 
 std::map<int, std::vector<std::vector<double>>> eMesh = {
   {1, {linspace(0.0, 1.0, 4)} },
   {2, {linspace(0.0, 0.5, 5, false),
-       linspace(0.5, 1.0, 8)} }
+       linspace(0.5, 1.0, 8)} },
+  {4, {linspace(0.0, 0.25, 5.0, false),
+       linspace(0.25, 0.5, 5.0, false),
+       linspace(0.5, 0.75, 5.0, false),
+       linspace(0.75, 1.0, 5.0, false)} }
 };
 
 
@@ -31,7 +35,7 @@ void RBF()
   auto sPoints = partition(supports, MPIsize)[MPIrank];
   auto ePoints = eMesh[MPIsize][MPIrank];
 
-  petsc::Matrix A(PETSC_COMM_WORLD, "System Matrix"), E(PETSC_COMM_WORLD, "Evaluation Matrix");
+  petsc::Matrix A("System Matrix"), E("Evaluation Matrix");
   if ( (MPIrank == MPIsize-1) and (dimension > 0) ) {
     A.init( sPoints.size()+polyparams, sPoints.size()+polyparams, PETSC_DECIDE, PETSC_DECIDE );
     E.init( ePoints.size(), sPoints.size()+polyparams, PETSC_DECIDE, PETSC_DECIDE );
@@ -46,6 +50,17 @@ void RBF()
 
   PetscInt rangeStart, rangeEnd;
   std::tie(rangeStart, rangeEnd) = A.ownerRange();
+
+  cout << "[" << MPIrank << "] Original Range Start / End = " << rangeStart << ", " << rangeEnd << endl;
+
+  // Introduce some overlap for testing.
+  rangeStart -= 2;
+  rangeEnd += 2;
+  if (rangeStart < 0) rangeStart = 0;
+  if (rangeEnd > nSupport+polyparams) rangeEnd = nSupport+polyparams;
+  
+  cout << "[" << MPIrank << "] Range Start / End = " << rangeStart << ", " << rangeEnd << endl;
+    
   for (PetscInt row = rangeStart; row < rangeEnd; row++) {
     if (row >= supports.size())
       break;
@@ -88,7 +103,7 @@ void RBF()
   E.assemble();
   // E.view();
   // E.viewDraw();
-  b.view(); 
+  // b.view(); 
   KSP ksp;
   KSPCreate(PETSC_COMM_WORLD, &ksp);
   KSPSetOperators(ksp, A.matrix, A.matrix);
